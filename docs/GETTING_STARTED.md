@@ -64,7 +64,7 @@ tests:
     attributes: [commit]
     csv_options:
       delimiter: ","
-      quote_char: "'"
+      quotechar: "'"
 ```
 
 The `time_column` property points to the name of the column storing the timestamp
