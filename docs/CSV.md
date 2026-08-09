@@ -44,7 +44,7 @@ The delimiter and quote character can also be configured globally:
 ```yaml
 csv:
   delimiter: ';'
-  quote_char: "'"
+  quotechar: "'"
 ```
 
 The corresponding command-line options are `--csv-delimiter` and

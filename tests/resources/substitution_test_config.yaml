@@ -40,4 +40,4 @@ postgres:
 
 csv:
   delimiter: ";"
-  quote_char: "'"
+  quotechar: "'"

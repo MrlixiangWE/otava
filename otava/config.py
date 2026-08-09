@@ -142,6 +142,10 @@ class NestedYAMLConfigFileParser(configargparse.ConfigFileParser):
         BigQueryConfig.NAME,
     ]
 
+    CONFIG_KEY_ALIASES = {
+        "csv-quotechar": "csv-quote-char",
+    }
+
     def parse(self, stream):
         yaml = YAML(typ="safe")
         config_data = yaml.load(stream)
@@ -154,6 +158,11 @@ class NestedYAMLConfigFileParser(configargparse.ConfigFileParser):
                 # Flatten only the config sections that correspond to CLI arguments
                 self._flatten_dict(value, flattened_dict, f"{key}-")
             # Ignore other sections like 'templates' and 'tests' - they shouldn't become CLI arguments
+
+        for source, target in self.CONFIG_KEY_ALIASES.items():
+            if source in flattened_dict:
+                flattened_dict[target] = flattened_dict.pop(source)
+
         return flattened_dict
 
     def _flatten_dict(self, nested_dict, flattened_dict, prefix=''):

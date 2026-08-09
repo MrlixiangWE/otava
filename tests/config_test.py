@@ -81,13 +81,29 @@ def test_load_csv_tests():
         ({"quotechar": "'", "quote_char": "|"}, "'"),
     ],
 )
-def test_csv_quote_character_config_names(csv_options, expected):
+def test_per_test_csv_quote_character_config_names(csv_options, expected):
     test = create_csv_test_config(
         "local",
         {"file": "sample.csv", "metrics": [], "csv_options": csv_options},
     )
 
     assert test.csv_options.quote_char == expected
+
+
+@pytest.mark.parametrize(
+    ("csv_options", "expected"),
+    [
+        ("quotechar: \"'\"", "'"),
+        ("quote_char: '|'", "|"),
+        ("quotechar: \"'\"\n  quote_char: '|'", "'"),
+        ("quote_char: '|'\n  quotechar: \"'\"", "'"),
+    ],
+)
+def test_global_csv_quote_character_config_names(csv_options, expected):
+    parser = NestedYAMLConfigFileParser()
+    result = parser.parse(StringIO(f"csv:\n  {csv_options}\n"))
+
+    assert result == {"csv-quote-char": expected}
 
 
 def test_load_test_groups():
