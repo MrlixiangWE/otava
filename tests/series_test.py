@@ -20,7 +20,7 @@ from random import random
 
 import pytest
 
-from otava.change_point_divisive.base import ChangePointSerializer
+from otava.change_point_divisive.base import ChangePointsByMetric, ChangePointSerializer
 from otava.series import AnalysisOptions, AnalyzedSeries, Metric, Series
 
 
@@ -289,8 +289,9 @@ def test_validate():
         attributes={},
     )
 
-    analyzed_series_fail = test_fail.analyze()
-    analyzed_series_fail.change_points = None
+    analyzed_series_fail = AnalyzedSeries(
+        test_fail, AnalysisOptions(), change_points=ChangePointsByMetric()
+    )
     err = analyzed_series_fail._validate_append(
         time=[len(time)], new_data={"series1": [0.51]}, attributes={}
     )
@@ -407,3 +408,83 @@ def test_series_raw_initialization():
 
     assert len(series.time) == 3
     assert series.data["throughput"] == [10.0, 12.0, 11.5]
+
+
+def test_change_points_computed_lazily_and_cached(monkeypatch):
+    from otava import series as series_module
+
+    calls = {"count": 0}
+    real_compute = series_module.compute_change_points
+
+    def counting_compute(*args, **kwargs):
+        calls["count"] += 1
+        return real_compute(*args, **kwargs)
+
+    monkeypatch.setattr(series_module, "compute_change_points", counting_compute)
+
+    data = [1.0] * 10 + [5.0] * 10
+    test = Series(
+        "lazy_test",
+        branch=None,
+        time=list(range(len(data))),
+        metrics={"m1": Metric(1, 1.0), "m2": Metric(1, 1.0)},
+        data={"m1": data, "m2": data.copy()},
+        attributes={},
+    )
+
+    analyzed = test.analyze()
+    assert calls["count"] == 0
+
+    change_points = analyzed.change_points
+    assert calls["count"] == 2  # one computation per metric
+    assert [c.index for c in change_points.get_change_points_for_metric("m1")] == [10]
+
+    assert analyzed.change_points is change_points
+    assert len(analyzed.change_points_by_time) == 1
+    assert analyzed.weak_change_points is not None
+    assert analyzed.change_points_timestamp is not None
+    assert calls["count"] == 2
+
+
+def test_append_computes_change_points_first():
+    data = [1.0] * 10 + [5.0] * 10
+    test = Series(
+        "append_lazy_test",
+        branch=None,
+        time=list(range(len(data))),
+        metrics={"m1": Metric(1, 1.0)},
+        data={"m1": data},
+        attributes={},
+    )
+
+    analyzed = test.analyze()
+    analyzed.append(time=[len(data)], new_data={"m1": [5.0]}, attributes={})
+
+    assert [c.index for c in analyzed.change_points.get_change_points_for_metric("m1")] == [10]
+    assert len(analyzed.change_points_by_time) == 1
+
+
+def test_from_json_does_not_recompute(monkeypatch):
+    from otava import series as series_module
+
+    data = [1.0] * 10 + [5.0] * 10
+    test = Series(
+        "roundtrip_lazy_test",
+        branch=None,
+        time=list(range(len(data))),
+        metrics={"m1": Metric(1, 1.0)},
+        data={"m1": data},
+        attributes={},
+    )
+    analyzed = test.analyze()
+    payload = analyzed.to_json()
+
+    def fail_compute(*args, **kwargs):
+        raise AssertionError("a deserialized series must not recompute change points")
+
+    monkeypatch.setattr(series_module, "compute_change_points", fail_compute)
+
+    restored = AnalyzedSeries.from_json(payload)
+    assert restored.change_points_timestamp == payload["change_points_timestamp"]
+    assert [c.index for c in restored.change_points.get_change_points_for_metric("m1")] == [10]
+    assert len(restored.change_points_by_time) == len(analyzed.change_points_by_time)
